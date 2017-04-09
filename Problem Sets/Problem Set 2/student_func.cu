@@ -130,7 +130,7 @@ void gaussian_blur(const unsigned char* const inputChannel,
 
   float temp = 0.0;
 
-  for (int i = -filterWidth/2; i < filterWidth1/2; i++)  {
+  for (int i = -filterWidth/2; i < filterWidth/2; i++)  {
       for (int j = -filterWidth/2; j < filterWidth/2; j++) {
             if ( thread_2D_pos.x + i >= numCols ||
                  thread_2D_pos.x + i < 0 ||
