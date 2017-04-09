@@ -130,19 +130,25 @@ void gaussian_blur(const unsigned char* const inputChannel,
 
   float temp = 0.0;
 
-  for (int i = 0; i < filterWidth; i++)  {
-      for (int j = 0; j < filterWidth; j++) {
+  for (int i = -filterWidth/2; i < filterWidth1/2; i++)  {
+      for (int j = -filterWidth/2; j < filterWidth/2; j++) {
             if ( thread_2D_pos.x + i >= numCols ||
-                 thread_2D_pos.y + j >= numRows )
+                 thread_2D_pos.x + i < 0 ||
+                 thread_2D_pos.y + j >= numRows ||
+                 thread_2D_pos.y + j < 0 )
             {
                 continue;
             }
             int abs_idx = (thread_2D_pos.y + j) * numCols + (thread_2D_pos.x + i);
-            temp += abs_idx * filter[j * filterWidth + i];
+            temp += inputChannel[abs_idx] * filter[(i + filterWidth/2) * filterWidth + i];
       }
   }
 
-  outputChannel[absolute_image_position_y*numCols + absolute_image_position_x] = (unsigned char) temp;
+  if (temp >= 255.0) {
+     temp = 255;
+  }
+
+  outputChannel[thread_1D_pos] = (unsigned char) temp;
 
   // NOTE: If a thread's absolute position 2D position is within the image, but some of
   // its neighbors are outside the image, then you will need to be extra careful. Instead
