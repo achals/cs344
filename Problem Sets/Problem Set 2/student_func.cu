@@ -116,13 +116,32 @@ void gaussian_blur(const unsigned char* const inputChannel,
   // NOTE: Be careful not to try to access memory that is outside the bounds of
   // the image. You'll want code that performs the following check before accessing
   // GPU memory:
-  //
-  // if ( absolute_image_position_x >= numCols ||
-  //      absolute_image_position_y >= numRows )
-  // {
-  //     return;
-  // }
-  
+
+  int absolute_image_position_x = blockIdx.x * blockDim.x + threadIdx.x;
+  int absolute_image_position_y = blockIdx.y * blockDim.y + threadIdx.y;
+
+  if ( absolute_image_position_x >= numCols ||
+       absolute_image_position_y >= numRows )
+  {
+     return;
+  }
+
+  float temp = 0.0;
+
+  for (int i = 0; i < filterWidth; i++)  {
+      for (int j = 0; j < filterWidth; j++) {
+            if ( absolute_image_position_x + i >= numCols ||
+                 absolute_image_position_y + j >= numRows )
+            {
+                continue;
+            }
+            int abs_idx = (absolute_image_position_y + j) * numCols + (absolute_image_position_x + i);
+            temp += abs_idx * filter[j * filterWidth + i];
+      }
+  }
+
+  outputChannel[absolute_image_position_y*numCols + absolute_image_position_x] = (unsigned char) temp;
+
   // NOTE: If a thread's absolute position 2D position is within the image, but some of
   // its neighbors are outside the image, then you will need to be extra careful. Instead
   // of trying to read such a neighbor value from GPU memory (which won't work because
@@ -213,14 +232,14 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
   //be able to tell if anything goes wrong
   //IMPORTANT: Notice that we pass a pointer to a pointer to cudaMalloc
 
-  checkCudaErrors(cudaMalloc(&d_filter,  sizeof(float) * filterWidth));
+  checkCudaErrors(cudaMalloc(&d_filter,  sizeof(float) * filterWidth * filterWidth));
 
   //TODO Done:
   //Copy the filter on the host (h_filter) to the memory you just allocated
   //on the GPU.  cudaMemcpy(dst, src, numBytes, cudaMemcpyHostToDevice);
   //Remember to use checkCudaErrors!
 
-  checkCudaErrors(cudaMemcpy(d_filter, h_filter,  sizeof(float) * filterWidth, cudaMemcpyHostToDevice));
+  checkCudaErrors(cudaMemcpy(d_filter, h_filter,  sizeof(float) * filterWidth * filterWidth, cudaMemcpyHostToDevice));
 }
 
 void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_inputImageRGBA,
