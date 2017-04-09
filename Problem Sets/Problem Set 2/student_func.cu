@@ -147,11 +147,14 @@ void separateChannels(const uchar4* const inputImageRGBA,
   // the image. You'll want code that performs the following check before accessing
   // GPU memory:
   //
-  // if ( absolute_image_position_x >= numCols ||
-  //      absolute_image_position_y >= numRows )
-  // {
-  //     return;
-  // }
+  int absolute_image_position_x = blockidx.x;
+  int absolute_image_position_y = blockidx.y;
+  if ( absolute_image_position_x >= numCols ||
+       absolute_image_position_y >= numRows )
+  {
+      return;
+  }
+
 }
 
 //This kernel takes in three color channels and recombines them
@@ -206,11 +209,14 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage, const size_t numColsI
   //be able to tell if anything goes wrong
   //IMPORTANT: Notice that we pass a pointer to a pointer to cudaMalloc
 
+  checkCudaErrors(cudaMalloc(&d_filter,  sizeof(float) * filterWidth));
+
   //TODO:
   //Copy the filter on the host (h_filter) to the memory you just allocated
   //on the GPU.  cudaMemcpy(dst, src, numBytes, cudaMemcpyHostToDevice);
   //Remember to use checkCudaErrors!
 
+  checkCudaErrors(cudaMemcpy(d_filter, h_filter,  sizeof(float) * filterWidth, cudaMemcpyHostToDevice));
 }
 
 void your_gaussian_blur(const uchar4 * const h_inputImageRGBA, uchar4 * const d_inputImageRGBA,
@@ -261,4 +267,5 @@ void cleanup() {
   checkCudaErrors(cudaFree(d_red));
   checkCudaErrors(cudaFree(d_green));
   checkCudaErrors(cudaFree(d_blue));
+  checkCudaErrors(cudaFree(d_filter));
 }
