@@ -117,25 +117,27 @@ void gaussian_blur(const unsigned char* const inputChannel,
   // the image. You'll want code that performs the following check before accessing
   // GPU memory:
 
-  int absolute_image_position_x = blockIdx.x * blockDim.x + threadIdx.x;
-  int absolute_image_position_y = blockIdx.y * blockDim.y + threadIdx.y;
+  const int2 thread_2D_pos = make_int2( blockIdx.x * blockDim.x + threadIdx.x,
+                                        blockIdx.y * blockDim.y + threadIdx.y);
 
-  if ( absolute_image_position_x >= numCols ||
-       absolute_image_position_y >= numRows )
-  {
-     return;
-  }
+  const int thread_1D_pos = thread_2D_pos.y * numCols + thread_2D_pos.x;
+  outputChannel[thread_1D_pos] = inputChannel[thread_1D_pos];
+
+  //make sure we don't try and access memory outside the image
+  //by having any threads mapped there return early
+  if (thread_2D_pos.x >= numCols || thread_2D_pos.y >= numRows)
+    return;
 
   float temp = 0.0;
 
   for (int i = 0; i < filterWidth; i++)  {
       for (int j = 0; j < filterWidth; j++) {
-            if ( absolute_image_position_x + i >= numCols ||
-                 absolute_image_position_y + j >= numRows )
+            if ( thread_2D_pos.x + i >= numCols ||
+                 thread_2D_pos.y + j >= numRows )
             {
                 continue;
             }
-            int abs_idx = (absolute_image_position_y + j) * numCols + (absolute_image_position_x + i);
+            int abs_idx = (thread_2D_pos.y + j) * numCols + (thread_2D_pos.x + i);
             temp += abs_idx * filter[j * filterWidth + i];
       }
   }
@@ -166,15 +168,17 @@ void separateChannels(const uchar4* const inputImageRGBA,
   // the image. You'll want code that performs the following check before accessing
   // GPU memory:
   //
-  int absolute_image_position_x = blockIdx.x;
-  int absolute_image_position_y = blockIdx.y;
-  if ( absolute_image_position_x >= numCols ||
-       absolute_image_position_y >= numRows )
-  {
-      return;
-  }
+  const int2 thread_2D_pos = make_int2( blockIdx.x * blockDim.x + threadIdx.x,
+                                        blockIdx.y * blockDim.y + threadIdx.y);
 
-  int idx = absolute_image_position_x * gridDim.x + absolute_image_position_y;
+  const int thread_1D_pos = thread_2D_pos.y * numCols + thread_2D_pos.x;
+
+  //make sure we don't try and access memory outside the image
+  //by having any threads mapped there return early
+  if (thread_2D_pos.x >= numCols || thread_2D_pos.y >= numRows)
+    return;
+
+  int idx = thread_1D_pos;
   redChannel[idx] = inputImageRGBA[idx].x;
   greenChannel[idx] = inputImageRGBA[idx].y;
   blueChannel[idx] = inputImageRGBA[idx].z;
