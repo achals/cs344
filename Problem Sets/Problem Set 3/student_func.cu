@@ -80,6 +80,53 @@
 */
 
 #include "utils.h"
+#include <stdio.h>
+
+
+__global__ void reduce_min_logLum(const float* const d_logLuminance,
+                                  float* d_temp,
+                                  float* d_min_logLum) {
+  //This method should reduce through d_logLuminance and find the minimum value.
+
+  int myId = threadIdx.x + blockDim.x * blockIdx.x;
+
+  d_temp[myId] = d_logLuminance[myId];
+  __syncthreads();
+
+  for (unsigned int s = blockDim.x * gridDim.x / 2; s>0; s>>=1) {
+      if (myId < s) {
+         d_temp[myId] = min(d_temp[myId], d_temp[myId + s]);
+      }
+      __syncthreads();
+  }
+
+  if (myId == 0) {
+     *d_min_logLum = d_temp[0];
+  }
+}
+
+__global__ void reduce_max_logLum(const float* const d_logLuminance,
+                                  float* d_temp,
+                                  float* d_max_logLum) {
+  //This method should reduce through d_logLuminance and find the maximum value.
+
+  int myId = threadIdx.x + blockDim.x * blockIdx.x;
+
+  d_temp[myId] = d_logLuminance[myId];
+  __syncthreads();
+
+  for (unsigned int s = blockDim.x * gridDim.x / 2; s>0; s>>=1) {
+      if (myId < s) {
+         d_temp[myId] = max(d_temp[myId], d_temp[myId + s]);
+      }
+      __syncthreads();
+  }
+
+  if (myId == 0) {
+     *d_max_logLum = d_temp[0];
+  }
+}
+
 
 void your_histogram_and_prefixsum(const float* const d_logLuminance,
                                   unsigned int* const d_cdf,
@@ -92,13 +139,43 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
   //TODO
   /*Here are the steps you need to implement
     1) find the minimum and maximum value in the input logLuminance channel
-       store in min_logLum and max_logLum
-    2) subtract them to find the range
-    3) generate a histogram of all the values in the logLuminance channel using
-       the formula: bin = (lum[i] - lumMin) / lumRange * numBins
-    4) Perform an exclusive scan (prefix sum) on the histogram to get
+       store in min_logLum and max_logLum */
+
+  int threads = numRows;
+  int blocks = numCols;
+
+  float *d_temp, *d_min_logLum, *d_max_logLum;
+  checkCudaErrors(cudaMalloc(&d_temp, sizeof(float) * threads * blocks));
+
+  float h_min_logLum, h_max_logLum;
+
+  checkCudaErrors(cudaMalloc(&d_min_logLum, sizeof(float)));
+  reduce_min_logLum<<<blocks, threads>>>(d_logLuminance, d_temp, d_min_logLum);
+  checkCudaErrors(cudaMemcpy(&h_min_logLum, d_min_logLum, sizeof(float), cudaMemcpyDeviceToHost));
+
+  min_logLum = h_min_logLum;
+
+  checkCudaErrors(cudaMalloc(&d_max_logLum, sizeof(float)));
+  reduce_max_logLum<<<blocks, threads>>>(d_logLuminance, d_temp, d_max_logLum);
+  checkCudaErrors(cudaMemcpy(&h_max_logLum, d_max_logLum, sizeof(float), cudaMemcpyDeviceToHost));
+
+  max_logLum = h_max_logLum;
+
+  printf("Max: %f, Min: %f\n", max_logLum, min_logLum);
+
+  /*2) subtract them to find the range */
+
+  float lumRange = h_max_logLum - h_min_logLum;
+
+  printf("Range: %f\n", lumRange);
+
+  /* 3) generate a histogram of all the values in the logLuminance channel using
+       the formula: bin = (lum[i] - lumMin) / lumRange * numBins */
+
+
+  /*4) Perform an exclusive scan (prefix sum) on the histogram to get
        the cumulative distribution of luminance values (this should go in the
        incoming d_cdf pointer which already has been allocated for you)       */
 
-
 }
+
