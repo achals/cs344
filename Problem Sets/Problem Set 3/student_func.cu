@@ -83,48 +83,53 @@
 #include <stdio.h>
 
 
-__global__ void reduce_min_logLum(const float* const d_logLuminance,
-                                  float* d_temp,
-                                  float* d_min_logLum) {
+__global__
+void reduce_min_logLum(const float* const d_logLuminance,
+                       float* d_temp) {
   //This method should reduce through d_logLuminance and find the minimum value.
+  extern __shared__ float sdata[];
 
   int myId = threadIdx.x + blockDim.x * blockIdx.x;
+  int tIdx = threadIdx.x;
 
-  d_temp[myId] = d_logLuminance[myId];
+  sdata[tIdx] = d_logLuminance[myId];
   __syncthreads();
 
-  for (unsigned int s = blockDim.x * gridDim.x / 2; s>0; s>>=1) {
-      if (myId < s) {
-         d_temp[myId] = min(d_temp[myId], d_temp[myId + s]);
+  for (unsigned int s = blockDim.x / 2; s>0; s>>=1) {
+      if (tIdx < s) {
+         sdata[tIdx] = min(sdata[tIdx], sdata[tIdx + s]);
       }
       __syncthreads();
   }
 
-  if (myId == 0) {
-     *d_min_logLum = d_temp[0];
+  if (tIdx == 0) {
+     d_temp[blockIdx.x] = sdata[0];
   }
 }
 
-__global__ void reduce_max_logLum(const float* const d_logLuminance,
-                                  float* d_temp,
-                                  float* d_max_logLum) {
+__global__
+void reduce_max_logLum(const float* const d_logLuminance,
+                       float* d_temp) {
   //This method should reduce through d_logLuminance and find the maximum value.
+  extern __shared__ float sdata[];
 
   int myId = threadIdx.x + blockDim.x * blockIdx.x;
+  int tIdx = threadIdx.x;
 
-  d_temp[myId] = d_logLuminance[myId];
+  sdata[tIdx] = d_logLuminance[myId];
   __syncthreads();
 
-  for (unsigned int s = blockDim.x * gridDim.x / 2; s>0; s>>=1) {
-      if (myId < s) {
-         d_temp[myId] = max(d_temp[myId], d_temp[myId + s]);
+  for (unsigned int s = blockDim.x / 2; s>0; s>>=1) {
+      if (tIdx < s) {
+         sdata[tIdx] = max(sdata[tIdx], sdata[tIdx + s]);
       }
       __syncthreads();
   }
 
-  if (myId == 0) {
-     *d_max_logLum = d_temp[0];
+  if (tIdx == 0) {
+     d_temp[blockIdx.x] = sdata[0];
   }
+
 }
 
 
@@ -141,23 +146,26 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
     1) find the minimum and maximum value in the input logLuminance channel
        store in min_logLum and max_logLum */
 
-  int threads = numRows;
-  int blocks = numCols;
+  int threads = numRows, blocks = numCols;
 
-  float *d_temp, *d_min_logLum, *d_max_logLum;
-  checkCudaErrors(cudaMalloc(&d_temp, sizeof(float) * threads * blocks));
+  float *d_temp;
+  checkCudaErrors(cudaMalloc(&d_temp, sizeof(float) * blocks));
 
   float h_min_logLum, h_max_logLum;
 
-  checkCudaErrors(cudaMalloc(&d_min_logLum, sizeof(float)));
-  reduce_min_logLum<<<blocks, threads>>>(d_logLuminance, d_temp, d_min_logLum);
-  checkCudaErrors(cudaMemcpy(&h_min_logLum, d_min_logLum, sizeof(float), cudaMemcpyDeviceToHost));
+  reduce_min_logLum<<<blocks, threads, sizeof(float) * threads>>>(d_logLuminance, d_temp);
+  reduce_min_logLum<<<1, blocks, sizeof(float) * threads>>>(d_temp, d_temp);
+
+  checkCudaErrors(cudaGetLastError());
+  checkCudaErrors(cudaMemcpy(&h_min_logLum, d_temp, sizeof(float), cudaMemcpyDeviceToHost));
 
   min_logLum = h_min_logLum;
 
-  checkCudaErrors(cudaMalloc(&d_max_logLum, sizeof(float)));
-  reduce_max_logLum<<<blocks, threads>>>(d_logLuminance, d_temp, d_max_logLum);
-  checkCudaErrors(cudaMemcpy(&h_max_logLum, d_max_logLum, sizeof(float), cudaMemcpyDeviceToHost));
+  reduce_max_logLum<<<blocks, threads, sizeof(float) * threads>>>(d_logLuminance, d_temp);
+  reduce_max_logLum<<<1, blocks, sizeof(float) * threads>>>(d_temp, d_temp);
+
+  checkCudaErrors(cudaGetLastError());
+  checkCudaErrors(cudaMemcpy(&h_max_logLum, d_temp, sizeof(float), cudaMemcpyDeviceToHost));
 
   max_logLum = h_max_logLum;
 
