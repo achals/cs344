@@ -133,6 +133,19 @@ void reduce_max_logLum(const float* const d_logLuminance,
 }
 
 
+__global__
+void parallel_histogram(const float* const d_logLuminance,
+                        float* d_histogram,
+                        float lumMin,
+                        float lumRange,
+                        const size_t numBins) {
+  int myId = threadIdx.x + blockDim.x * blockIdx.x;
+  
+  int bin = (d_logLuminance[myId] - lumMin) / lumRange * numBins;
+  atomicAdd(&d_histogram[bin], 1);
+}
+
+
 void your_histogram_and_prefixsum(const float* const d_logLuminance,
                                   unsigned int* const d_cdf,
                                   float &min_logLum,
@@ -180,6 +193,13 @@ void your_histogram_and_prefixsum(const float* const d_logLuminance,
   /* 3) generate a histogram of all the values in the logLuminance channel using
        the formula: bin = (lum[i] - lumMin) / lumRange * numBins */
 
+  float *d_histogram, *h_histogram;
+  checkCudaErrors(cudaMalloc(&d_histogram, sizeof(float) * numBins));
+  parallel_histogram<<<blocks, threads>>>(d_logLuminance, d_histogram, h_min_logLum, lumRange, numBins);
+  checkCudaErrors(cudaGetLastError());
+
+  h_histogram = (float *) malloc(sizeof(float) * numBins);
+  checkCudaErrors(cudaMemcpy(h_histogram, d_histogram, sizeof(float) * numBins, cudaMemcpyDeviceToHost));
 
   /*4) Perform an exclusive scan (prefix sum) on the histogram to get
        the cumulative distribution of luminance values (this should go in the
